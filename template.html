@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>US Jobs: Recession and Recovery 2006–2015</title>
+<style>
+:root{--bg:#07090e;--panel:#0f1520;--line:#222c3c;--grid:#1a2230;--fg:#eef2f8;--mute:#9aa4b6;--cy:#7de3ff;--cu:#ff9a5c;--uv:#a58bff;--neg:#ff5c7a;--pos:#5be3a1}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:36px max(16px,env(safe-area-inset-left)) 60px}
+.kick{font:600 11px/1 ui-monospace,Consolas,monospace;letter-spacing:.25em;text-transform:uppercase;color:var(--cu)}
+h1{font-size:clamp(28px,4.4vw,44px);margin:.35em 0 .2em;letter-spacing:-.02em;text-wrap:balance}
+h1 span{background:linear-gradient(90deg,var(--cy),#fff,var(--cu));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--mute);max-width:70ch;margin:0 0 26px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi,.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;min-width:0}
+.kpi b{display:block;font-size:clamp(24px,3vw,34px);line-height:1.15;font-variant-numeric:tabular-nums}.kpi small{color:var(--mute);font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.full{grid-column:1/-1}
+@media (max-width:860px){.kpis{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+h2{font-size:17px;margin:0 0 4px}.note{color:var(--mute);font-size:13px;margin:0 0 10px}
+svg{display:block;width:100%;height:auto;overflow:visible}svg text{fill:var(--mute);font-size:11px;font-family:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.chip{border:1px solid var(--line);background:#0b111b;color:var(--mute);border-radius:999px;padding:4px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+.chip[aria-pressed=true]{color:#07090e;background:var(--cy);border-color:var(--cy)}
+#tip{position:fixed;pointer-events:none;background:#0b111b;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12.5px;opacity:0;transition:opacity .12s;z-index:9;max-width:240px}
+footer{margin-top:26px;color:var(--mute);font-size:13px;border-top:1px solid var(--line);padding-top:14px}
+a{color:var(--cy)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kick">Data analysis · U.S. employment 2006–2015</div>
+  <h1>The jobs recession and the <span>long recovery</span></h1>
+  <p class="lead" id="lead"></p>
+  <div class="kpis" id="kpis"></div>
+  <div class="grid">
+    <div class="card full"><h2>Total nonfarm jobs</h2><p class="note">Thousands of jobs, seasonally adjusted. Hover for monthly values.</p><svg id="total" viewBox="0 0 1100 300" role="img" aria-label="Line chart of total nonfarm jobs"></svg></div>
+    <div class="card full"><h2>Jobs added or lost each month</h2><p class="note">Change from the previous month, thousands.</p><svg id="change" viewBox="0 0 1100 220" role="img" aria-label="Bar chart of monthly job changes"></svg></div>
+    <div class="card"><h2>How deep each industry fell, and where it ended</h2><p class="note">Peak-to-trough drop (dot) and December 2015 versus its pre-recession peak (diamond), % change.</p><svg id="dumbbell" viewBox="0 0 540 470" role="img" aria-label="Dumbbell chart of sector declines"></svg></div>
+    <div class="card"><h2>Industry jobs indexed to the total-jobs peak</h2><p class="note">January 2008 = 100. Pick industries to compare; the grey line is all jobs.</p><div class="chips" id="chips"></div><svg id="index" viewBox="0 0 540 380" role="img" aria-label="Indexed sector employment lines"></svg></div>
+  </div>
+  <footer id="foot"></footer>
+</div>
+<div id="tip" role="status"></div>
+<script>
+const D = /*DATA*/null;
+const NS = "http://www.w3.org/2000/svg", fmt = n => n.toLocaleString("en-US", {maximumFractionDigits: 1});
+const mon = m => { const [y, mm] = m.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mm - 1] + " " + y; };
+const el = (p, tag, at, txt) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (txt != null) e.textContent = txt; p.appendChild(e); return e; };
+const tip = document.getElementById("tip");
+const show = (ev, html) => { tip.innerHTML = html; tip.style.opacity = 1; const x = Math.min(ev.clientX + 14, innerWidth - 250); tip.style.left = x + "px"; tip.style.top = (ev.clientY + 14) + "px"; };
+const hide = () => tip.style.opacity = 0;
+const nice = (lo, hi, n) => { const step = Math.pow(10, Math.floor(Math.log10((hi - lo) / n))); const s = [1, 2, 2.5, 5, 10, 20].map(m => m * step).find(m => (hi - lo) / m <= n); const out = []; const start = Math.floor(lo / s) * s; for (let v = start; ; v += s) { out.push(+v.toFixed(6)); if (v >= hi - 1e-9) break; } return out; };
+const T = D.total, N = D.months.length;
+
+document.getElementById("lead").textContent =
+  `The U.S. lost ${fmt(T.loss / 1000)} million jobs (${T.drop_pct}%) between ${mon(T.peak_month)} and ${mon(T.trough_month)}. ` +
+  `It took ${T.months_to_recover} months after the low point to get back to the old peak, in ${mon(T.recovered_month)}. ` +
+  `Some industries never came back by the end of 2015.`;
+const notBack = D.sectors.filter(s => !s.recovered_month).length;
+document.getElementById("kpis").innerHTML = [
+  [`${fmt(T.loss / 1000)}M`, `jobs lost, ${mon(T.peak_month)} to ${mon(T.trough_month)}`, "var(--neg)"],
+  [`${T.months_to_recover} months`, `from the low to the old peak (${mon(T.recovered_month)})`, "var(--cy)"],
+  [`${fmt(D.worst_month.change)}k`, `worst single month (${mon(D.worst_month.month)})`, "var(--cu)"],
+  [`${notBack} of ${D.sectors.length}`, "industries still below their peak in Dec 2015", "var(--uv)"],
+].map(([v, l, c]) => `<div class="kpi"><b style="color:${c}">${v}</b><small>${l}</small></div>`).join("");
+
+function frame(svg, W, H, m, xs, ys, yTicks, yFmt) {
+  yTicks.forEach(v => { const y = ys(v); el(svg, "line", {x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: "var(--grid)"}); el(svg, "text", {x: m.l - 8, y: y + 4, "text-anchor": "end"}, yFmt(v)); });
+  D.months.forEach((mm, i) => { if (mm.endsWith("-01")) { const x = xs(i); el(svg, "line", {x1: x, x2: x, y1: H - m.b, y2: H - m.b + 5, stroke: "var(--line)"}); el(svg, "text", {x, y: H - m.b + 18, "text-anchor": "middle"}, mm.slice(0, 4)); } });
+}
+
+(function total() {
+  const svg = document.getElementById("total"), W = 1100, H = 300, m = {l: 64, r: 20, t: 20, b: 30};
+  const lo = Math.min(...D.nonfarm), hi = Math.max(...D.nonfarm), ticks = nice(lo - 1000, hi + 1000, 5);
+  const xs = i => m.l + i / (N - 1) * (W - m.l - m.r), ys = v => H - m.b - (v - ticks[0]) / (ticks.at(-1) - ticks[0]) * (H - m.t - m.b);
+  frame(svg, W, H, m, xs, ys, ticks, v => fmt(v / 1000) + "M");
+  const pi = D.months.indexOf(T.peak_month), ti = D.months.indexOf(T.trough_month), ri = D.months.indexOf(T.recovered_month);
+  el(svg, "rect", {x: xs(pi), y: m.t, width: xs(ri) - xs(pi), height: H - m.t - m.b, fill: "rgba(125,227,255,.05)"});
+  el(svg, "line", {x1: xs(pi), x2: xs(ri), y1: ys(T.peak), y2: ys(T.peak), stroke: "var(--cu)", "stroke-dasharray": "4 4"});
+  const d = D.nonfarm.map((v, i) => (i ? "L" : "M") + xs(i).toFixed(1) + " " + ys(v).toFixed(1)).join("");
+  const g = el(svg, "defs", {}); const lg = el(g, "linearGradient", {id: "fillg", x1: 0, y1: 0, x2: 0, y2: 1});
+  el(lg, "stop", {offset: 0, "stop-color": "#7de3ff", "stop-opacity": .25}); el(lg, "stop", {offset: 1, "stop-color": "#7de3ff", "stop-opacity": 0});
+  el(svg, "path", {d: d + `L${xs(N - 1)} ${H - m.b}L${xs(0)} ${H - m.b}Z`, fill: "url(#fillg)"});
+  el(svg, "path", {d, fill: "none", stroke: "var(--cy)", "stroke-width": 2.5, "stroke-linejoin": "round"});
+  [[pi, T.peak, "Peak " + mon(T.peak_month), -12], [ti, T.trough, "Low " + mon(T.trough_month), -12], [ri, D.nonfarm[ri], "Back to peak " + mon(T.recovered_month), -12]].forEach(([i, v, t, dy]) => {
+    el(svg, "circle", {cx: xs(i), cy: ys(v), r: 5, fill: "var(--bg)", stroke: "var(--cu)", "stroke-width": 2});
+    el(svg, "text", {x: xs(i), y: ys(v) + dy, "text-anchor": "middle", style: "fill:var(--fg);font-size:12px"}, t);
+  });
+  const dot = el(svg, "circle", {r: 4, fill: "var(--cy)", opacity: 0});
+  const hit = el(svg, "rect", {x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent"});
+  hit.addEventListener("mousemove", ev => { const r = svg.getBoundingClientRect(); const i = Math.max(0, Math.min(N - 1, Math.round(((ev.clientX - r.left) / r.width * W - m.l) / (W - m.l - m.r) * (N - 1))));
+    dot.setAttribute("cx", xs(i)); dot.setAttribute("cy", ys(D.nonfarm[i])); dot.setAttribute("opacity", 1);
+    show(ev, `<b>${mon(D.months[i])}</b><br>${fmt(D.nonfarm[i])}k jobs`); });
+  hit.addEventListener("mouseleave", () => { dot.setAttribute("opacity", 0); hide(); });
+})();
+
+(function change() {
+  const svg = document.getElementById("change"), W = 1100, H = 220, m = {l: 64, r: 20, t: 12, b: 30};
+  const vals = D.change.map(v => v ?? 0), ticks = nice(Math.min(...vals), Math.max(...vals), 5);
+  const xs = i => m.l + (i + .5) / N * (W - m.l - m.r), ys = v => H - m.b - (v - ticks[0]) / (ticks.at(-1) - ticks[0]) * (H - m.t - m.b);
+  frame(svg, W, H, m, i => m.l + i / N * (W - m.l - m.r), ys, ticks, v => fmt(v));
+  el(svg, "line", {x1: m.l, x2: W - m.r, y1: ys(0), y2: ys(0), stroke: "var(--mute)"});
+  const bw = (W - m.l - m.r) / N * .72;
+  D.change.forEach((v, i) => { if (v == null) return; const y0 = ys(0), y1 = ys(v);
+    const b = el(svg, "rect", {x: xs(i) - bw / 2, y: Math.min(y0, y1), width: bw, height: Math.max(1, Math.abs(y1 - y0)), fill: v < 0 ? "var(--neg)" : "var(--pos)", rx: 1});
+    b.addEventListener("mousemove", ev => show(ev, `<b>${mon(D.months[i])}</b><br>${v > 0 ? "+" : ""}${fmt(v)}k jobs`)); b.addEventListener("mouseleave", hide); });
+})();
+
+(function dumbbell() {
+  const svg = document.getElementById("dumbbell"), W = 540, H = 470, m = {l: 190, r: 20, t: 26, b: 34};
+  const S = D.sectors, lo = Math.min(...S.map(s => s.drop_pct)), hi = Math.max(...S.map(s => s.end_vs_peak_pct)), ticks = nice(lo, hi, 6);
+  const xs = v => m.l + (v - ticks[0]) / (ticks.at(-1) - ticks[0]) * (W - m.l - m.r), row = (H - m.t - m.b) / S.length;
+  ticks.forEach(v => { el(svg, "line", {x1: xs(v), x2: xs(v), y1: m.t, y2: H - m.b, stroke: v === 0 ? "var(--mute)" : "var(--grid)"}); el(svg, "text", {x: xs(v), y: H - m.b + 18, "text-anchor": "middle"}, (v > 0 ? "+" : "") + v + "%"); });
+  el(svg, "circle", {cx: m.l, cy: 10, r: 5, fill: "var(--neg)"}); el(svg, "text", {x: m.l + 10, y: 14}, "deepest drop");
+  el(svg, "path", {d: `M${m.l + 120} 4 l6 6 l-6 6 l-6 -6z`, fill: "var(--cy)"}); el(svg, "text", {x: m.l + 132, y: 14}, "Dec 2015 vs peak");
+  S.forEach((s, i) => { const y = m.t + row * (i + .5);
+    el(svg, "text", {x: m.l - 10, y: y + 4, "text-anchor": "end", style: "fill:var(--fg)"}, s.label);
+    el(svg, "line", {x1: xs(s.drop_pct), x2: xs(s.end_vs_peak_pct), y1: y, y2: y, stroke: "var(--line)", "stroke-width": 3});
+    const c = el(svg, "circle", {cx: xs(s.drop_pct), cy: y, r: 6, fill: "var(--neg)"});
+    const dmd = el(svg, "path", {d: `M${xs(s.end_vs_peak_pct)} ${y - 7} l7 7 l-7 7 l-7 -7z`, fill: s.end_vs_peak_pct >= 0 ? "var(--cy)" : "var(--cu)"});
+    const html = `<b>${s.label}</b><br>Peak ${mon(s.peak_month)} → low ${mon(s.trough_month)}: ${s.drop_pct}%<br>Dec 2015 vs peak: ${s.end_vs_peak_pct > 0 ? "+" : ""}${s.end_vs_peak_pct}%<br>${s.no_decline ? "Kept growing" : s.recovered_month ? "Back to peak " + mon(s.recovered_month) : "Not back to peak by Dec 2015"}`;
+    [c, dmd].forEach(n => { n.addEventListener("mousemove", ev => show(ev, html)); n.addEventListener("mouseleave", hide); }); });
+})();
+
+(function index() {
+  const svg = document.getElementById("index"), W = 540, H = 380, m = {l: 40, r: 14, t: 14, b: 30}, chips = document.getElementById("chips");
+  const all = D.nonfarm.map(v => v / T.peak * 100), S = D.sectors;
+  let on = new Set(["construction", "manufacturing", "education_and_health_services", "leisure_and_hospitality"]);
+  const colors = ["#7de3ff", "#ff9a5c", "#a58bff", "#5be3a1", "#ffd36e", "#ff5c7a", "#c8d4ff", "#ffb3d1", "#9ef0ff", "#ffcf9e", "#b9f2c8"];
+  S.forEach((s, i) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = s.label; b.style.setProperty("--c", colors[i]);
+    b.setAttribute("aria-pressed", on.has(s.key)); b.onclick = () => { on.has(s.key) ? on.delete(s.key) : on.add(s.key); b.setAttribute("aria-pressed", on.has(s.key)); draw(); }; chips.appendChild(b); });
+  function draw() {
+    svg.innerHTML = ""; const shown = S.filter(s => on.has(s.key)), vals = [...all, ...shown.flatMap(s => s.index)];
+    const ticks = nice(Math.min(...vals), Math.max(...vals), 6);
+    const xs = i => m.l + i / (N - 1) * (W - m.l - m.r), ys = v => H - m.b - (v - ticks[0]) / (ticks.at(-1) - ticks[0]) * (H - m.t - m.b);
+    frame(svg, W, H, m, xs, ys, ticks, v => v);
+    el(svg, "line", {x1: m.l, x2: W - m.r, y1: ys(100), y2: ys(100), stroke: "var(--mute)", "stroke-dasharray": "3 4"});
+    const path = (arr, col, w) => el(svg, "path", {d: arr.map((v, i) => (i ? "L" : "M") + xs(i).toFixed(1) + " " + ys(v).toFixed(1)).join(""), fill: "none", stroke: col, "stroke-width": w, "stroke-linejoin": "round"});
+    path(all, "#5d6678", 2);
+    shown.forEach(s => { const col = colors[S.indexOf(s)], p = path(s.index, col, 2.4), last = s.index.at(-1);
+      p.addEventListener("mousemove", ev => show(ev, `<b>${s.label}</b><br>Dec 2015: ${last.toFixed(1)} (Jan 2008 = 100)`)); p.addEventListener("mouseleave", hide);
+      el(svg, "circle", {cx: xs(N - 1), cy: ys(last), r: 3.5, fill: col}); });
+    document.querySelectorAll("#chips .chip").forEach((b, i) => { b.style.background = b.getAttribute("aria-pressed") === "true" ? colors[i] : ""; b.style.borderColor = b.getAttribute("aria-pressed") === "true" ? colors[i] : ""; });
+  }
+  draw();
+})();
+
+document.getElementById("foot").innerHTML = `Source: ${D.source} Months ${mon(D.months[0])} to ${mon(D.months.at(-1))}. ` +
+  `Peaks are each series' highest month before 2010. Analysis and dashboard by <a href="https://komarapujordanephraim-creator.github.io">Komarapu Jordan Ephraim</a>.`;
+</script>
+</body>
+</html>
